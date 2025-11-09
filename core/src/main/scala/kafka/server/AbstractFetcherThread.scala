@@ -110,6 +110,7 @@ abstract class AbstractFetcherThread(name: String,
 
   override def doWork() {
     maybeTruncate()
+    // 拉取数据
     maybeFetch()
   }
 

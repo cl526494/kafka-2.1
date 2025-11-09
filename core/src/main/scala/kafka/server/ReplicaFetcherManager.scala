@@ -35,6 +35,7 @@ class ReplicaFetcherManager(brokerConfig: KafkaConfig,
   override def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): ReplicaFetcherThread = {
     val prefix = threadNamePrefix.map(tp => s"$tp:").getOrElse("")
     val threadName = s"${prefix}ReplicaFetcherThread-$fetcherId-${sourceBroker.id}"
+    // 构建 ReplicaFetcherThread 用于 fetch message
     new ReplicaFetcherThread(threadName, fetcherId, sourceBroker, brokerConfig, replicaManager,
       metrics, time, quotaManager)
   }

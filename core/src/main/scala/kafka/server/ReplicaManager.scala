@@ -488,6 +488,7 @@ class ReplicaManager(val config: KafkaConfig,
 
       recordConversionStatsCallback(localProduceResults.mapValues(_.info.recordConversionStats))
 
+      // 判断 ack 值 == -1
       if (delayedProduceRequestRequired(requiredAcks, entriesPerPartition, localProduceResults)) {
         // create delayed produce operation
         val produceMetadata = ProduceMetadata(requiredAcks, produceStatus)
@@ -817,7 +818,9 @@ class ReplicaManager(val config: KafkaConfig,
                     quota: ReplicaQuota = UnboundedQuota,
                     responseCallback: Seq[(TopicPartition, FetchPartitionData)] => Unit,
                     isolationLevel: IsolationLevel) {
+    // 来自 follower 的 fetch 请求 (协议约定 >= 0 为 follower 请求,-1 为 consumer 请求 -2 为 controller 请求)
     val isFromFollower = Request.isValidBrokerId(replicaId)
+    // todo 事务?
     val fetchOnlyFromLeader = replicaId != Request.DebuggingConsumerId && replicaId != Request.FutureLocalReplicaId
 
     val fetchIsolation = if (isFromFollower || replicaId == Request.FutureLocalReplicaId)
@@ -837,10 +840,12 @@ class ReplicaManager(val config: KafkaConfig,
         hardMaxBytesLimit = hardMaxBytesLimit,
         readPartitionInfo = fetchInfos,
         quota = quota)
+      // 如果是 follower 的拉取请求,记录 follower 的 LEO、上次 fetch 时间等
       if (isFromFollower) updateFollowerLogReadResults(replicaId, result)
       else result
     }
 
+    // 主要是计算
     val logReadResults = readFromLog()
 
     // check if this fetch request can be satisfied right away
@@ -929,6 +934,7 @@ class ReplicaManager(val config: KafkaConfig,
           readInfo.fetchedData
         }
 
+        // leaderLogEndOffset 触发 ISR 收缩
         LogReadResult(info = fetchDataInfo,
                       highWatermark = readInfo.highWatermark,
                       leaderLogStartOffset = readInfo.logStartOffset,

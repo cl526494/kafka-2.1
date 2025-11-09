@@ -472,10 +472,12 @@ class Partition(val topicPartition: TopicPartition,
     val leaderLWIncremented = newLeaderLW > oldLeaderLW
     // check if we need to expand ISR to include this replica
     // if it is not in the ISR yet
+    // 提升 Leader 高水位
     val leaderHWIncremented = maybeExpandIsr(replicaId, logReadResult)
 
     val result = leaderLWIncremented || leaderHWIncremented
     // some delayed operations may be unblocked after HW or LW changed
+    // ack 相关
     if (result)
       tryCompleteDelayedRequests()
 
@@ -520,6 +522,7 @@ class Partition(val topicPartition: TopicPartition,
           }
           // check if the HW of the partition can now be incremented
           // since the replica may already be in the ISR and its LEO has just incremented
+          // 更新 hw
           maybeIncrementLeaderHW(leaderReplica, logReadResult.fetchTimeMs)
         case None => false // nothing to do if no longer leader
       }
@@ -588,11 +591,13 @@ class Partition(val topicPartition: TopicPartition,
     val allLogEndOffsets = assignedReplicas.filter { replica =>
       curTime - replica.lastCaughtUpTimeMs <= replicaLagTimeMaxMs || inSyncReplicas.contains(replica)
     }.map(_.logEndOffset)
+    // 所有 follower 的 leo 最小值
     val newHighWatermark = allLogEndOffsets.min(new LogOffsetMetadata.OffsetOrdering)
     val oldHighWatermark = leaderReplica.highWatermark
 
     // Ensure that the high watermark increases monotonically. We also update the high watermark when the new
     // offset metadata is on a newer segment, which occurs whenever the log is rolled to a new segment.
+    // ① HW 需要提升 ② HW 无需提升,但是处于新段
     if (oldHighWatermark.messageOffset < newHighWatermark.messageOffset ||
       (oldHighWatermark.messageOffset == newHighWatermark.messageOffset && oldHighWatermark.onOlderSegment(newHighWatermark))) {
       leaderReplica.highWatermark = newHighWatermark
@@ -626,6 +631,7 @@ class Partition(val topicPartition: TopicPartition,
   private def tryCompleteDelayedRequests() {
     val requestKey = new TopicPartitionOperationKey(topicPartition)
     replicaManager.tryCompleteDelayedFetch(requestKey)
+    // 唤醒 DelayedProducePurgatory，让等待 acks=all 的请求重试 tryComplete
     replicaManager.tryCompleteDelayedProduce(requestKey)
     replicaManager.tryCompleteDelayedDeleteRecords(requestKey)
   }
@@ -790,6 +796,7 @@ class Partition(val topicPartition: TopicPartition,
     }
 
     val fetchedData = localReplica.log match {
+      // todo doRead
       case Some(log) =>
         log.read(fetchOffset, maxBytes, maxOffsetOpt, minOneMessage,
           includeAbortedTxns = fetchIsolation == FetchTxnCommitted)

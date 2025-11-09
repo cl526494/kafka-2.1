@@ -1693,6 +1693,7 @@ class Log(@volatile var dir: File,
         producerStateManager.updateMapEndOffset(newOffset)
         producerStateManager.takeSnapshot()
 
+        // 构建 new segment
         val segment = LogSegment.open(dir,
           baseOffset = newOffset,
           config,
